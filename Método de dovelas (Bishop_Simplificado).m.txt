@@ -1,0 +1,172 @@
+%% ANÁLISIS DE ESTABILIDAD DE TALUDES - MÉTODO BISHOP SIMPLIFICADO
+%  Código optimizado para cálculo geométrico automático de dovelas.
+%  ------------------------------------------------------------------------
+clear; clc; close all;
+
+fprintf('==========================================================\n');
+fprintf('     ANÁLISIS DE ESTABILIDAD DE TALUDES (BISHOP)          \n');
+fprintf('==========================================================\n');
+
+%% 1. DEFINICIÓN DEL MODELO (GEOMETRÍA Y SUELO)
+
+% --- Propiedades del Suelo ---
+gam_s   = 18;    % Peso específico (kN/m3)
+c_p     = 15;    % Cohesión efectiva (kPa)
+phi_p   = 25;    % Ángulo de fricción (grados)
+phi_rad = deg2rad(phi_p);
+
+% --- Geometría del Talud (Coordenadas X, Y) ---
+% Definimos un talud simple de 10m de altura
+% Pie del talud en (15, 0), Coronación en (25, 10)
+X_terr = [0,  15, 25, 50]; 
+Y_terr = [0,   0, 10, 10]; 
+
+% --- Configuración del Análisis ---
+num_dovelas = 20;  % Más dovelas = mayor precisión
+
+% --- Búsqueda del Círculo Crítico ---
+% En lugar de una lista manual, generamos una malla de búsqueda automática
+% Esto hace que tu código se vea mucho más avanzado.
+x_centros = 10 : 2 : 20;   % Rango de búsqueda X
+y_centros = 15 : 2 : 25;   % Rango de búsqueda Y (sobre el talud)
+
+FS_min_global = 999;       % Inicializar con valor alto
+Circulo_Critico = [];      % Para guardar datos del ganador
+
+%% 2. PROCESO DE CÁLCULO (BUCLES)
+
+fprintf('\nIniciando iteraciones de búsqueda...\n');
+contador = 0;
+
+for xc = x_centros
+    for yc = y_centros
+        
+        % Radio: Hacemos que el círculo pase tangente al pie (aprox)
+        % o probamos varios radios. Aquí fijamos que toque el fondo (Y=0)
+        % para asegurar que corte el talud.
+        Radio = sqrt((xc - 15)^2 + (yc - 0)^2); % Tangente al pie aprox
+        
+        % Verificar si es un círculo válido (debe cortar el talud)
+        if Radio < yc - 10; continue; end 
+        
+        contador = contador + 1;
+        
+        % --- A. DISCRETIZACIÓN (GENERAR DOVELAS REALES) ---
+        % Encontrar puntos de entrada y salida del círculo en el terreno
+        % Simplificación: Asumimos rango de X donde el círculo está bajo tierra
+        x_ini = xc - sqrt(Radio^2 - (yc - Y_terr(1))^2); % Aprox
+        if ~isreal(x_ini); continue; end
+        x_fin = xc + sqrt(Radio^2 - (yc - Y_terr(3))^2); % Aprox
+        
+        % Ajustar límites al talud
+        x_ini = max(x_ini, X_terr(1));
+        x_fin = min(x_fin, X_terr(end));
+        
+        ancho = (x_fin - x_ini) / num_dovelas;
+        
+        % Inicializar acumuladores para Bishop
+        sum_numerador = 0;
+        sum_denominador = 0;
+        
+        % Vector para guardar datos de este círculo (para graficar si gana)
+        dovelas_data = []; 
+        
+        % --- B. BUCLE DE DOVELAS (GEOMETRÍA) ---
+        W_vec = []; alpha_vec = [];
+        
+        for k = 1:num_dovelas
+            % Punto medio de la dovela
+            x_mid = x_ini + (k - 0.5) * ancho;
+            
+            % 1. Altura del círculo en x_mid (Ec. Círculo)
+            y_circ = yc - sqrt(Radio^2 - (x_mid - xc)^2);
+            if ~isreal(y_circ); continue; end
+            
+            % 2. Altura del terreno en x_mid (Interpolación)
+            y_sup = interp1(X_terr, Y_terr, x_mid, 'linear');
+            
+            % 3. Altura de la dovela (h)
+            h_dovela = y_sup - y_circ;
+            if h_dovela <= 0; continue; end % Dovela en el aire
+            
+            % 4. Peso de la dovela (W) - CÁLCULO REAL
+            W = h_dovela * ancho * gam_s;
+            
+            % 5. Ángulo de la base (alpha) - CÁLCULO REAL
+            % sin(alpha) = opuesto/hipotenusa = (x - xc) / R
+            sin_alpha = (x_mid - xc) / Radio;
+            alpha = asin(sin_alpha); % Radianes
+            
+            W_vec = [W_vec; W];
+            alpha_vec = [alpha_vec; alpha];
+        end
+        
+        if isempty(W_vec); continue; end
+        
+        % --- C. ITERACIÓN DE BISHOP ---
+        FS = 2.0; % Semilla inicial
+        tol = 0.001;
+        
+        for iter = 1:50
+            m_alpha = cos(alpha_vec) + (sin(alpha_vec) .* tan(phi_rad)) ./ FS;
+            
+            % Numerador Bishop: c'*b + (W - u*b)*tan(phi)
+            % Nota: L = ancho / cos(alpha)
+            % Simplificado: c'*ancho + (W - 0)*tan(phi) ... todo / m_alpha
+            term1 = (c_p * ancho + W_vec .* tan(phi_rad)) ./ m_alpha;
+            
+            Numerador = sum(term1);
+            Denominador = sum(W_vec .* sin(alpha_vec));
+            
+            FS_nuevo = Numerador / Denominador;
+            
+            if abs(FS_nuevo - FS) < tol
+                FS = FS_nuevo;
+                break;
+            end
+            FS = FS_nuevo;
+        end
+        
+        % Guardar si es el mínimo
+        if FS < FS_min_global
+            FS_min_global = FS;
+            Circulo_Critico = [xc, yc, Radio];
+        end
+    end
+end
+
+%% 3. RESULTADOS Y GRÁFICA
+
+fprintf('----------------------------------------------------------\n');
+fprintf('RESULTADO FINAL:\n');
+fprintf(' > FS Mínimo encontrado:  %.3f\n', FS_min_global);
+if ~isempty(Circulo_Critico)
+    fprintf(' > Centro Crítico (X,Y):  (%.2f, %.2f)\n', Circulo_Critico(1), Circulo_Critico(2));
+    fprintf(' > Radio Crítico:         %.2f m\n', Circulo_Critico(3));
+else
+    fprintf('Error: No se encontraron círculos válidos.\n');
+    return;
+end
+
+% --- GRAFICACIÓN ---
+figure('Name', 'Resultados Bishop', 'Color', 'w');
+hold on; grid on; axis equal;
+
+% 1. Dibujar Talud (Relleno gris)
+fill([X_terr, X_terr(end), X_terr(1)], [Y_terr, -5, -5], [0.8 0.8 0.8], 'EdgeColor', 'k', 'LineWidth', 2);
+
+% 2. Dibujar Círculo Crítico
+xc = Circulo_Critico(1); yc = Circulo_Critico(2); R = Circulo_Critico(3);
+theta = linspace(0, 2*pi, 100);
+plot(xc + R*cos(theta), yc + R*sin(theta), 'r--', 'LineWidth', 2);
+
+% 3. Marcar Centro
+plot(xc, yc, 'rx', 'MarkerSize', 10, 'LineWidth', 2);
+
+% Estética
+title(['Estabilidad de Taludes (Bishop) | FS_{min} = ' num2str(FS_min_global, 3)], 'FontSize', 12);
+xlabel('Distancia (m)'); ylabel('Altura (m)');
+ylim([-2, 20]); xlim([-5, 55]);
+legend('Geometría Talud', 'Superficie de Falla Crítica', 'Centro de Giro');
+
+fprintf('\n>>> Gráfica generada exitosamente.\n');

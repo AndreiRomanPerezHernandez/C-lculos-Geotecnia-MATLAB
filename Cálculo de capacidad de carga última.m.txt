@@ -1,0 +1,115 @@
+%% CÁLCULO DE CAPACIDAD DE CARGA ÚLTIMA (MEYERHOF) - COMPLETO
+%  Programa interactivo con desglose detallado de términos.
+%  ------------------------------------------------------------------------
+clear; clc; close all;
+
+fprintf('==========================================================\n');
+fprintf('   DISEÑO GEOTÉCNICO: CAPACIDAD DE CARGA (MEYERHOF)       \n');
+fprintf('==========================================================\n\n');
+
+%% 1. ENTRADA DE DATOS
+fprintf('--- A. PROPIEDADES DEL SUELO ---\n');
+gamma = input(' Peso específico del suelo (gamma) [kN/m3]: ');
+c     = input(' Cohesión del suelo (c) [kPa]: ');
+phi   = input(' Ángulo de fricción interna (phi) [grados]: ');
+
+fprintf('\n--- B. GEOMETRÍA DE LA CIMENTACIÓN ---\n');
+Df    = input(' Profundidad de desplante (Df) [m]: ');
+B     = input(' Ancho de la cimentación (B) [m]: ');
+L     = input(' Longitud de la cimentación (L) [m] (Si es cuadrada L=B): ');
+
+% Cargas e Inclinación
+fprintf('\n--- C. CARGAS E INCLINACIÓN ---\n');
+es_vertical = input(' ¿La carga es totalmente vertical? (1=Si, 0=No): ');
+
+if es_vertical == 1
+    ic = 1; iq = 1; ig = 1;
+    fprintf(' > Se asume carga vertical: ic = iq = ig = 1.0\n');
+else
+    % Si hubiera carga inclinada, aquí pedirías H y V para calcularlos
+    fprintf(' Ingrese los factores calculados manualmente:\n');
+    ic = input(' Factor ic: ');
+    iq = input(' Factor iq: ');
+    ig = input(' Factor igamma: ');
+end
+
+%% 2. CÁLCULOS
+
+% Conversión
+phi_rad = deg2rad(phi);
+
+% Sobrecarga q
+q_sobrecarga = gamma * Df;
+
+% Coeficiente Kp (Muestra el valor usado)
+Kp = (tan(deg2rad(45 + phi/2)))^2;
+
+% Factores de Capacidad (N)
+Nq = exp(pi * tan(phi_rad)) * (tan(deg2rad(45 + phi/2)))^2;
+Nc = (Nq - 1) * cot(phi_rad);
+Ngamma = (Nq - 1) * tan(1.4 * phi_rad);
+
+% Factores de Forma (s) - Usando Kp
+sc = 1 + 0.2 * Kp * (B/L);
+sq = 1 + 0.1 * Kp * (B/L);
+sgamma = sq; 
+
+% Factores de Profundidad (d)
+if (Df/B) <= 1
+    dq = 1 + 0.1 * sqrt(Kp) * (Df/B);
+else
+    dq = 1 + 0.1 * sqrt(Kp) * atan(Df/B);
+end
+dgamma = dq; 
+dc = dq - (1 - dq) / (Nc * tan(phi_rad));
+
+%% 3. DESGLOSE DE TÉRMINOS (LO QUE EXTRAÑABAS)
+
+% Término 1: Cohesión (Resistencia por pegamento del suelo)
+Term_c = c * Nc * sc * dc * ic;
+
+% Término 2: Sobrecarga (Resistencia por suelo encima)
+Term_q = q_sobrecarga * Nq * sq * dq * iq;
+
+% Término 3: Peso (Resistencia por fricción bajo la zapata)
+Term_g = 0.5 * gamma * B * Ngamma * sgamma * dgamma * ig;
+
+% Sumatoria Final
+qu = Term_c + Term_q + Term_g;
+q_adm = qu / 3; % Factor de seguridad usual
+
+%% 4. REPORTE FINAL DETALLADO
+fprintf('\n\n==========================================================\n');
+fprintf('                HOJA DE CÁLCULO DETALLADA                 \n');
+fprintf('==========================================================\n');
+fprintf('DATOS: Gamma=%.1f, c=%.1f, phi=%.1f, Df=%.2f, B=%.2f\n', gamma, c, phi, Df, B);
+fprintf('CALCULADO: q=%.2f kN/m2, Kp=%.4f\n', q_sobrecarga, Kp);
+fprintf('----------------------------------------------------------\n');
+fprintf(' FACTORES ADIMENSIONALES:\n');
+fprintf('  * Capacidad: Nc=%.3f,  Nq=%.3f,  Ny=%.3f\n', Nc, Nq, Ngamma);
+fprintf('  * Forma:     sc=%.3f,  sq=%.3f,  sy=%.3f\n', sc, sq, sgamma);
+fprintf('  * Profund.:  dc=%.3f,  dq=%.3f,  dy=%.3f\n', dc, dq, dgamma);
+fprintf('  * Inclin.:   ic=%.3f,  iq=%.3f,  iy=%.3f\n', ic, iq, ig);
+fprintf('----------------------------------------------------------\n');
+fprintf(' COMPONENTES DE LA ECUACIÓN GENERAL:\n');
+fprintf('  [1] Término Cohesión (c...):    %8.2f kN/m2\n', Term_c);
+fprintf('  [2] Término Sobrecarga (q...):  %8.2f kN/m2\n', Term_q);
+fprintf('  [3] Término Peso (0.5gB...):    %8.2f kN/m2\n', Term_g);
+fprintf('----------------------------------------------------------\n');
+fprintf(' RESULTADO FINAL:\n');
+fprintf('  >>> Capacidad Última (q_u):     %8.2f kN/m2 <<<\n', qu);
+fprintf('  >>> Capacidad Admisible (FS=3): %8.2f kN/m2\n', q_adm);
+fprintf('==========================================================\n');
+
+%% 5. GRÁFICA DE CONTRIBUCIÓN (VISUALIZACIÓN)
+figure('Name','Desglose de Capacidad','Color','w');
+datos = [Term_c, Term_q, Term_g];
+nombres = {'Cohesión', 'Sobrecarga', 'Peso Propio'};
+bar(datos, 'FaceColor', [0.2 0.6 0.8]);
+grid on;
+title(['Contribución de cada término a q_u = ' num2str(qu, '%.1f')]);
+ylabel('Resistencia (kN/m^2)');
+set(gca, 'XTickLabel', nombres);
+for i=1:3
+    text(i, datos(i), num2str(datos(i),'%.1f'),'Vert','bottom','Horiz','center');
+end

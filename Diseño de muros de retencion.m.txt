@@ -1,0 +1,124 @@
+%% DISEÑO DE MURO DE RETENCIÓN (MECÁNICA DE FALLA)
+%  Basado en las ecuaciones expandidas de la Tarea 3.
+%  Calcula: FSv (Volteo), FSd (Deslizamiento), Excentricidad y Presiones.
+clear; clc;
+
+fprintf('=================================================\n');
+fprintf('     CÁLCULO DE ESTABILIDAD DE MURO (MC-V)       \n');
+fprintf('=================================================\n\n');
+
+%% 1. ENTRADA DE VARIABLES DE DISEÑO (GEOMETRÍA)
+fprintf('--- 1. GEOMETRÍA DEL MURO ---\n');
+H  = input(' Altura del vástago fuera del suelo (H) [m]: ');
+D  = input(' Profundidad de desplante (D) [m]: ');
+HT = input(' Espesor de la zapata (HT) [m]: ');
+LT = input(' Longitud del pie (LT) [m]: ');
+LS = input(' Espesor del vástago (LS) [m]: ');
+LH = input(' Longitud del talón (LH) [m]: ');
+
+% Cálculo automático del Ancho total B
+B = LT + LS + LH;
+fprintf(' > Ancho total calculado (B): %.2f m\n\n', B);
+
+%% 2. ENTRADA DE VARIABLES DE CONTROL (MATERIALES)
+fprintf('--- 2. PROPIEDADES DE LOS MATERIALES ---\n');
+gam_c = input(' Peso esp. del Concreto (gam_c) [ton/m3]: ');
+gam_1 = input(' Peso esp. Relleno/Suelo (gam_1) [ton/m3]: ');
+phi_1 = input(' Ángulo de fricción Relleno (phi_1) [grados]: ');
+phi_2 = input(' Ángulo de fricción Base (phi_2) [grados]: ');
+C2    = input(' Cohesión del suelo base (C2) [ton/m2]: ');
+
+%% 3. CÁLCULOS INTERMEDIOS (FUERZAS Y BRAZOS)
+
+% Altura total del muro (H')
+H_total = H + D;
+
+% Cálculo del Empuje Activo (Pa) usando Rankine
+% Ka = tan^2(45 - phi/2)
+Ka = (tand(45 - phi_1/2))^2;
+Pa = 0.5 * gam_1 * (H_total^2) * Ka;
+
+% --- CÁLCULO DE PESOS (W) SEGÚN TUS ECUACIONES ---
+% W1: Suelo sobre el talón
+W1 = (H + D - HT) * LH * gam_1;
+
+% W2: Peso de la zapata (Base)
+W2 = B * HT * gam_c;
+
+% W3: Peso del vástago
+W3 = (H + D - HT) * LS * gam_c;
+
+% W4: Suelo sobre el pie
+% NOTA: En tu cuaderno usaste gam_1 para este suelo. 
+% Si fuera suelo natural sería gam_2, pero respeto tu ecuación:
+W4 = (D - HT) * LT * gam_1; 
+
+% Suma de Fuerzas Verticales (Sigma V)
+Sigma_V = W4 + W3 + W2 + W1;
+
+% --- CÁLCULO DE MOMENTOS RESISTENTES (MR) CON RESPECTO AL PIE ---
+% Brazos de palanca desde el punto O (extremo del pie)
+brazo_W4 = LT / 2;
+brazo_W3 = LT + LS/2;
+brazo_W2 = B / 2;
+brazo_W1 = LT + LS + LH/2;
+
+% Momentos individuales
+M_W4 = W4 * brazo_W4;
+M_W3 = W3 * brazo_W3;
+M_W2 = W2 * brazo_W2;
+M_W1 = W1 * brazo_W1;
+
+Sigma_MR = M_W4 + M_W1 + M_W2 + M_W3; % Numerador del FSv
+
+% --- CÁLCULO DE MOMENTO DE VOLTEO (MO) ---
+brazo_Pa = H_total / 3;
+Sigma_MO = Pa * brazo_Pa;
+
+%% 4. APLICACIÓN DE LAS ECUACIONES NARANJAS (TAREA 3)
+
+% --- A. Factor de Seguridad al Volteo (FSv) ---
+% Ecuación: FSv = Sigma_MR / Sigma_MO
+FSv = Sigma_MR / Sigma_MO;
+
+% --- B. Excentricidad (e) ---
+% Ecuación: e = B/2 - (Sigma_MR - Sigma_MO) / Sigma_V
+e = (B/2) - ((Sigma_MR - Sigma_MO) / Sigma_V);
+
+% --- C. Factor de Seguridad al Deslizamiento (FSd) ---
+% Ecuación: FSd = [ Sigma_V * tan(phi_2) + B*C2 ] / Pa
+FSd = ( (Sigma_V * tand(phi_2)) + (B * C2) ) / Pa;
+
+% --- D. Presiones de Contacto (Pmax y Pmin) ---
+% Pmax = (Sigma_V / B) * (1 + 6e/B)
+Pmax = (Sigma_V / B) * (1 + (6*e)/B);
+
+% Pmin = (Sigma_V / B) * (1 - 6e/B)
+Pmin = (Sigma_V / B) * (1 - (6*e)/B);
+
+
+%% 5. REPORTE DE RESULTADOS
+fprintf('\n\n=================================================\n');
+fprintf('               RESULTADOS DEL ANÁLISIS           \n');
+fprintf('=================================================\n');
+fprintf('FUERZAS:\n');
+fprintf(' > Empuje Activo (Pa):    %.2f ton\n', Pa);
+fprintf(' > Suma Verticales (ΣV):  %.2f ton\n', Sigma_V);
+fprintf('-------------------------------------------------\n');
+fprintf('FACTORES DE SEGURIDAD:\n');
+fprintf(' > F.S. Volteo (FSv):     %.3f  (Debe ser > 1.5)\n', FSv);
+fprintf(' > F.S. Desliz. (FSd):    %.3f  (Debe ser > 1.5)\n', FSd);
+fprintf('-------------------------------------------------\n');
+fprintf('ESTABILIDAD INTERNA:\n');
+fprintf(' > Excentricidad (e):     %.3f m\n', e);
+fprintf('   (Revisar que e < B/6 = %.3f m)\n', B/6);
+fprintf(' > Presión Máx (q_max):   %.2f ton/m2\n', Pmax);
+fprintf(' > Presión Mín (q_min):   %.2f ton/m2\n', Pmin);
+fprintf('=================================================\n');
+
+% Validación rápida visual
+if FSv < 1.5 || FSd < 1.5 || e > B/6 || Pmin < 0
+    fprintf(' [!] ALERTA: EL DISEÑO NO CUMPLE ALGUNOS CRITERIOS.\n');
+else
+    fprintf(' [OK] EL DISEÑO PARECE SATISFACTORIO.\n');
+end

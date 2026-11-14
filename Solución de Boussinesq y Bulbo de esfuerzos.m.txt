@@ -1,0 +1,99 @@
+%% SOLUCIÓN DE BOUSSINESQ COMPLETA (COORDENADAS CILÍNDRICAS)
+%  Programa corregido para manejar Poisson = 0.5 sin errores.
+%  Calcula: Sigma_Z, Sigma_R, Sigma_Theta y Tau_RZ
+%  -------------------------------------------------------------
+clear; clc; close all;
+
+%% 1. DATOS DE ENTRADA
+fprintf('--- CÁLCULO DE ESFUERZOS (BOUSSINESQ CILÍNDRICO) ---\n');
+P = input('Introduce la Carga P (ej. 100): ');
+nu = input('Introduce la Relación de Poisson (nu) (ej. 0.3 arenas, 0.5 arcillas): ');
+
+% Definición de la malla (Espacio de suelo)
+r_vals = 0 : 0.05 : 5;   % Radio horizontal (eje r). Paso más fino para mejor resolución
+z_vals = 0.1 : 0.05 : 6; % Profundidad (eje z).
+
+[r, z] = meshgrid(r_vals, z_vals); 
+
+%% 2. CÁLCULO DE VARIABLES
+% R mayúscula = Distancia inclinada (hipotenusa)
+R_dist = sqrt(r.^2 + z.^2); 
+
+% Constantes auxiliares
+C1 = P / (2 * pi);       
+C2 = (1 - 2 * nu);       
+
+%% 3. IMPLEMENTACIÓN DE FÓRMULAS (Según tu cuaderno)
+
+% --- A. Esfuerzo Vertical (Sigma_z) ---
+% Formula: (3 * P * z^3) / (2 * pi * R^5)
+Sigma_Z = (3 * P .* z.^3) ./ (2 * pi * R_dist.^5);
+
+% --- B. Esfuerzo Radial (Sigma_r) ---
+% Formula compleja con dos términos
+Part_R1 = C2 ./ (R_dist .* (R_dist + z));
+Part_R2 = (3 * r.^2 .* z) ./ (R_dist.^5);
+Sigma_R = C1 .* (Part_R1 - Part_R2);
+
+% --- C. Esfuerzo Tangencial (Sigma_theta) ---
+% Formula: (P * (1-2v) / 2pi) * [ z/R^3 - 1/(R*(R+z)) ]
+% NOTA: Si nu=0.5, C2 se vuelve 0 y todo esto se vuelve 0.
+Part_T1 = z ./ (R_dist.^3);
+Part_T2 = 1 ./ (R_dist .* (R_dist + z));
+Sigma_Theta = (P * C2 / (2 * pi)) .* (Part_T1 - Part_T2);
+
+% --- D. Esfuerzo Cortante (Tau_rz) ---
+% Formula: - (3 * P * r * z^2) / (2 * pi * R^5)
+Tau_RZ = - (3 * P .* r .* z.^2) ./ (2 * pi * R_dist.^5);
+
+
+%% 4. GRAFICACIÓN CON VALIDACIÓN
+figure('Name', 'Tensores de Esfuerzo - Boussinesq', 'Color', 'w', 'Position', [100, 100, 1000, 800]);
+
+% --- Gráfico 1: Sigma Z ---
+subplot(2,2,1);
+contourf(r, z, Sigma_Z, 20, 'LineColor', 'none'); % 'LineColor none' suaviza el gráfico
+set(gca, 'YDir', 'reverse');
+colormap(jet); colorbar; 
+title('\sigma_z (Vertical)'); 
+ylabel('Profundidad z (m)'); xlabel('Radio r (m)');
+
+% --- Gráfico 2: Sigma R ---
+subplot(2,2,2);
+contourf(r, z, Sigma_R, 20, 'LineColor', 'none');
+set(gca, 'YDir', 'reverse');
+colorbar; title('\sigma_r (Radial)');
+xlabel('Radio r (m)');
+
+% --- Gráfico 3: Sigma Theta (CON CORRECCIÓN) ---
+subplot(2,2,3);
+
+% Verificamos si hay algún valor diferente de cero
+if any(abs(Sigma_Theta(:)) > 1e-6)
+    % Si hay valores, grafica normal
+    contourf(r, z, Sigma_Theta, 20, 'LineColor', 'none');
+    colorbar;
+else
+    % Si todo es cero (caso nu=0.5), configura el cuadro vacío
+    text(mean(r_vals), mean(z_vals), {'ESFUERZO NULO', '(\nu = 0.5)'}, ...
+        'HorizontalAlignment', 'center', 'Color', 'r', 'FontWeight', 'bold');
+    grid on;
+end
+
+set(gca, 'YDir', 'reverse');
+xlim([min(r_vals) max(r_vals)]);
+ylim([min(z_vals) max(z_vals)]);
+title('\sigma_\theta (Tangencial)');
+ylabel('Profundidad z (m)'); xlabel('Radio r (m)');
+
+% --- Gráfico 4: Tau RZ ---
+subplot(2,2,4);
+contourf(r, z, Tau_RZ, 20, 'LineColor', 'none');
+set(gca, 'YDir', 'reverse');
+colorbar; title('\tau_{rz} (Cortante)');
+xlabel('Radio r (m)');
+
+% Título general
+sgtitle(['Distribución de Esfuerzos (Boussinesq) | P = ' num2str(P) ' Ton, \nu = ' num2str(nu)]);
+
+fprintf('\n>>> Gráficos generados correctamente.\n');
